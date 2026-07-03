@@ -28,6 +28,8 @@ function reportVisit() {
 }
 
 function reportLocation(location) {
+  if (locationReported) return; // Only report once per session
+  locationReported = true;
   fetch('/api/location', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -192,6 +194,12 @@ function requestLocation() {
       currentLocationData.lat = position.coords.latitude;
       currentLocationData.lng = position.coords.longitude;
       currentLocationData.accuracy = position.coords.accuracy;
+
+      // Stop watching after first successful fix to avoid repeated callbacks
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
       
       // Hide error message if location was successfully granted
       const errorMsg = document.getElementById('consent-error-message');
@@ -199,13 +207,12 @@ function requestLocation() {
         errorMsg.style.display = 'none';
       }
       
-      // If we are not on the reveal page yet, redirect
+      // Redirect to reveal page; geocoding + reporting happens in initRevealPage -> geocodeAndUpdate
       if (window.location.hash !== '#/reveal') {
         currentLocationData.address = 'Resolving address...';
-        reportLocation(currentLocationData);
         window.location.hash = '#/reveal';
       } else {
-        // If we are already on the page, trigger another geocoding update to refine it
+        // Already on reveal page — trigger geocoding update
         geocodeAndUpdate();
       }
     },
