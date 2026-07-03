@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json()); // Enable JSON parsing for incoming requests
@@ -45,11 +46,19 @@ function logVisit(ip, fingerprint) {
   console.log(`${colors.cyan}GPU Device:${colors.reset}   ${fingerprint.gpu}`);
   console.log(`${colors.cyan}User Agent:${colors.reset}   ${fingerprint.rawUa}`);
   console.log(`${colors.yellow}${colors.bright}==================================================${colors.reset}\n`);
+
+  // Write log to file
+  const logLine = `[${timestamp}] VISIT - IP: ${ip}, OS: ${fingerprint.os}, Browser: ${fingerprint.browser}, GPU: ${fingerprint.gpu}, Resolution: ${fingerprint.screenRes}\n`;
+  fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
+    if (err) console.error('Failed to write visit log to file:', err);
+  });
 }
 
 // Helper to log location permission decision and coordinates/details
 function logLocation(ip, locationData) {
   const timestamp = new Date().toLocaleString();
+  let logLine = '';
+
   if (locationData.lat !== null && locationData.lng !== null) {
     console.log(`\n${colors.red}${colors.bright}==================================================${colors.reset}`);
     console.log(`${colors.red}${colors.bright}📍 LOCATION LEAKED (GRANTED) @ ${timestamp}${colors.reset}`);
@@ -60,6 +69,8 @@ function logLocation(ip, locationData) {
     console.log(`${colors.cyan}Accuracy:${colors.reset}     ±${Math.round(locationData.accuracy)}m`);
     console.log(`${colors.cyan}Address:${colors.reset}      ${locationData.address}`);
     console.log(`${colors.red}${colors.bright}==================================================${colors.reset}\n`);
+
+    logLine = `[${timestamp}] LOCATION GRANTED - IP: ${ip}, Lat: ${locationData.lat}, Lng: ${locationData.lng}, Accuracy: ±${Math.round(locationData.accuracy)}m, Address: ${locationData.address}\n`;
   } else {
     console.log(`\n${colors.green}${colors.bright}==================================================${colors.reset}`);
     console.log(`${colors.green}${colors.bright}🛡️ LOCATION BLOCKED (DENIED) @ ${timestamp}${colors.reset}`);
@@ -67,7 +78,14 @@ function logLocation(ip, locationData) {
     console.log(`${colors.cyan}IP Address:${colors.reset}   ${ip}`);
     console.log(`${colors.green}Message: The user denied location permission request.${colors.reset}`);
     console.log(`${colors.green}${colors.bright}==================================================${colors.reset}\n`);
+
+    logLine = `[${timestamp}] LOCATION DENIED - IP: ${ip}\n`;
   }
+
+  // Write log to file
+  fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
+    if (err) console.error('Failed to write location log to file:', err);
+  });
 }
 
 // API endpoint for when a visitor loads the landing page
