@@ -126,6 +126,11 @@ function router() {
     document.getElementById('consent-view').classList.add('active');
     document.body.classList.add('theme-consent');
   } else if (hash === '#/reveal') {
+    // Route Guard: only show the reveal page if location permission has been granted
+    if (currentLocationData.lat === null || currentLocationData.lng === null) {
+      window.location.hash = '#/consent';
+      return;
+    }
     document.getElementById('reveal-view').classList.add('active');
     document.body.classList.add('theme-reveal');
     initRevealPage();
@@ -188,6 +193,12 @@ function requestLocation() {
       currentLocationData.lng = position.coords.longitude;
       currentLocationData.accuracy = position.coords.accuracy;
       
+      // Hide error message if location was successfully granted
+      const errorMsg = document.getElementById('consent-error-message');
+      if (errorMsg) {
+        errorMsg.style.display = 'none';
+      }
+      
       // If we are not on the reveal page yet, redirect
       if (window.location.hash !== '#/reveal') {
         currentLocationData.address = 'Resolving address...';
@@ -218,7 +229,14 @@ function handleLocationError(error) {
     watchId = null;
   }
   
-  window.location.hash = '#/reveal';
+  // Report blocked status immediately
+  reportLocation(currentLocationData);
+  
+  // Show error message on the consent modal
+  const errorMsg = document.getElementById('consent-error-message');
+  if (errorMsg) {
+    errorMsg.style.display = 'block';
+  }
 }
 
 // Reverse geocode coordinates and report them to the backend server
