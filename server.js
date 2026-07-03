@@ -23,10 +23,22 @@ const colors = {
 };
 
 // Helper to extract client IP address
+// On Vercel: x-real-ip contains the true client IP
+// x-forwarded-for may contain Vercel's own proxy IPs first
 function getClientIp(req) {
+  // Vercel sets x-real-ip to the actual visitor's IP
+  if (req.headers['x-real-ip']) {
+    return req.headers['x-real-ip'].trim();
+  }
+  // Cloudflare support
+  if (req.headers['cf-connecting-ip']) {
+    return req.headers['cf-connecting-ip'].trim();
+  }
+  // Fallback: last entry in x-forwarded-for is the real client
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    const ips = forwarded.split(',').map(ip => ip.trim());
+    return ips[ips.length - 1]; // last = real client IP
   }
   return req.ip || req.connection.remoteAddress;
 }
