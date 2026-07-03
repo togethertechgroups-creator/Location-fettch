@@ -47,11 +47,16 @@ function logVisit(ip, fingerprint) {
   console.log(`${colors.cyan}User Agent:${colors.reset}   ${fingerprint.rawUa}`);
   console.log(`${colors.yellow}${colors.bright}==================================================${colors.reset}\n`);
 
-  // Write log to file
   const logLine = `[${timestamp}] VISIT - IP: ${ip}, OS: ${fingerprint.os}, Browser: ${fingerprint.browser}, GPU: ${fingerprint.gpu}, Resolution: ${fingerprint.screenRes}\n`;
-  fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
-    if (err) console.error('Failed to write visit log to file:', err);
-  });
+
+  // Write log to file safely (read-only file system protection)
+  try {
+    fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
+      // Intentionally ignore EROFS (Read-only file system) errors on Vercel
+    });
+  } catch (fsErr) {
+    // Catch synchronous errors if any
+  }
 }
 
 // Helper to log location permission decision and coordinates/details
@@ -82,10 +87,14 @@ function logLocation(ip, locationData) {
     logLine = `[${timestamp}] LOCATION DENIED - IP: ${ip}\n`;
   }
 
-  // Write log to file
-  fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
-    if (err) console.error('Failed to write location log to file:', err);
-  });
+  // Write log to file safely (read-only file system protection)
+  try {
+    fs.appendFile(path.join(__dirname, 'visits.log'), logLine, (err) => {
+      // Intentionally ignore EROFS (Read-only file system) errors on Vercel
+    });
+  } catch (fsErr) {
+    // Catch synchronous errors if any
+  }
 }
 
 // API endpoint for when a visitor loads the landing page
